@@ -1,0 +1,19 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: spring-ai-alibaba
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+  ai:
+    chat:
+      client:
+        enabled: false
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: qwq:32b
+    dashscope:
+      api-key:
