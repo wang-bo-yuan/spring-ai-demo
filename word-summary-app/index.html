@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word文档智能抽取模块</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#10b981',
+                        accent: '#6366f1',
+                        neutral: '#f3f4f6',
+                        'neutral-dark': '#1f2937',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .transition-custom {
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+        }
+        
+        /* 修复样式污染的关键CSS */
+        #result-content {
+            all: initial; /* 重置所有继承的样式 */
+            display: block; /* 重置后需要重新设置显示方式 */
+            width: 100%;
+        }
+        
+        #result-content * {
+            all: revert; /* 重置所有元素的样式 */
+        }
+        
+        /* 为结果内容提供基本排版样式 */
+        #result-content-container {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.05);
+        }
+        
+        #result-content-container h1, 
+        #result-content-container h2, 
+        #result-content-container h3, 
+        #result-content-container h4 {
+            font-weight: bold;
+            margin-top: 1.2em;
+            margin-bottom: 0.8em;
+        }
+        
+        #result-content-container h1 {
+            font-size: 1.8rem;
+            border-bottom: 2px solid #eaeaea;
+            padding-bottom: 0.5rem;
+        }
+        
+        #result-content-container h2 {
+            font-size: 1.5rem;
+        }
+        
+        #result-content-container h3 {
+            font-size: 1.3rem;
+        }
+        
+        #result-content-container p {
+            margin-bottom: 1rem;
+        }
+        
+        #result-content-container ul, 
+        #result-content-container ol {
+            padding-left: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        #result-content-container li {
+            margin-bottom: 0.5rem;
+        }
+        
+        #result-content-container table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+        }
+        
+        #result-content-container th, 
+        #result-content-container td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        #result-content-container th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        
+        #result-content-container blockquote {
+            border-left: 4px solid #3b82f6;
+            padding: 0.5rem 1rem;
+            margin: 1.5rem 0;
+            background: #f9f9f9;
+            color: #555;
+        }
+        
+        #result-content-container pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+        }
+        
+        #result-content-container code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: #f5f5f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: #d63384;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-neutral-100 to-white min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-12 max-w-5xl">
+        <!-- 头部区域 -->
+        <header class="text-center mb-12">
+            <h1 class="text-3xl md:text-4xl font-bold text-neutral-800 mb-4 text-shadow">
+                <i class="fa fa-file-word-o text-primary mr-3"></i>Word文档摘要生成器
+            </h1>
+            <p class="text-gray-600 text-lg max-w-3xl mx-auto">
+                上传您的Word文档，我们将为您智能生成内容摘要，提取关键信息，大幅节省阅读时间
+            </p>
+        </header>
+
+        <!-- 主内容区域 -->
+        <main class="bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-12 transform hover:shadow-2xl transition-custom">
+            <!-- 文件上传区域 -->
+            <div id="upload-container" class="mb-10">
+                <div id="drop-area" class="border-2 border-dashed border-gray-300 rounded-xl p-8 md:p-10 text-center cursor-pointer hover:border-primary transition-custom bg-gradient-to-br from-white to-neutral-50">
+                    <input type="file" id="file-input" class="hidden" accept=".doc,.docx">
+                    <div class="flex justify-center mb-4">
+                        <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                            <i class="fa fa-cloud-upload text-3xl text-primary"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-semibold text-gray-700 mb-2">拖放Word文档到这里</h3>
+                    <p class="text-gray-500 mb-6">或者点击下方按钮选择文件</p>
+                    <button id="browse-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-custom flex items-center justify-center mx-auto">
+                        <i class="fa fa-folder-open-o mr-2"></i> 浏览文件
+                    </button>
+                    <p class="text-gray-400 text-sm mt-4">支持 .doc 和 .docx 格式，最大文件大小 20MB</p>
+                </div>
+                
+                <div id="file-info" class="hidden mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mr-3">
+                                <i class="fa fa-file-word-o text-primary"></i>
+                            </div>
+                            <div>
+                                <p id="file-name" class="font-medium text-gray-800 truncate max-w-xs"></p>
+                                <p id="file-size" class="text-sm text-gray-500"></p>
+                            </div>
+                        </div>
+                        <button id="remove-file" class="text-gray-400 hover:text-red-500 transition-custom">
+                            <i class="fa fa-times-circle text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex flex-col sm:flex-row justify-center gap-4 mb-10">
+                <button id="upload-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-custom disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                    <i class="fa fa-paper-plane-o mr-2"></i> 上传并生成摘要
+                </button>
+                <button id="reset-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-custom flex items-center justify-center">
+                    <i class="fa fa-refresh mr-2"></i> 重置
+                </button>
+            </div>
+
+            <!-- 进度条 -->
+            <div id="progress-container" class="hidden mb-10">
+                <div class="flex justify-between items-center mb-2">
+                    <p class="text-gray-700 font-medium">正在处理文档...</p>
+                    <span id="progress-percentage" class="text-primary font-medium">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="progress-bar" class="bg-primary h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- 结果展示区域 -->
+            <div id="result-container" class="hidden">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                    <i class="fa fa-file-text-o text-primary mr-3"></i> 文档摘要结果
+                </h2>
+                
+                <div class="bg-gray-50 rounded-xl p-1 mb-6 shadow-sm border border-gray-200">
+                    <div id="result-content-container">
+                        <div id="result-content"></div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end">
+                    <button id="copy-btn" class="bg-secondary hover:bg-secondary/90 text-white font-medium py-2 px-6 rounded-lg shadow-md hover:shadow-lg transition-custom flex items-center">
+                        <i class="fa fa-copy mr-2"></i> 复制摘要
+                    </button>
+                </div>
+            </div>
+
+            <!-- 错误提示区域 -->
+            <div id="error-container" class="hidden mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-exclamation-circle text-red-500 text-xl mt-1 mr-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-red-800">上传失败</h3>
+                        <div class="mt-2 text-sm text-red-700">
+                            <p id="error-message"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 功能特点展示 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-100">
+                <div class="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mb-4">
+                    <i class="fa fa-bolt text-blue-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">极速处理</h3>
+                <p class="text-gray-600">采用先进算法，快速分析文档内容，10秒内生成精准摘要</p>
+            </div>
+            
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-100">
+                <div class="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center mb-4">
+                    <i class="fa fa-lock text-green-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">安全可靠</h3>
+                <p class="text-gray-600">文件处理完毕后自动删除，确保您的文档内容安全无泄漏</p>
+            </div>
+            
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-100">
+                <div class="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center mb-4">
+                    <i class="fa fa-file-text-o text-purple-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">格式保留</h3>
+                <p class="text-gray-600">智能保留原始文档的标题、列表、表格等关键格式信息</p>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <footer class="text-center text-gray-500 text-sm pb-8">
+            <div class="flex justify-center space-x-4 mb-4">
+                <a href="#" class="text-gray-400 hover:text-primary transition"><i class="fa fa-question-circle"></i> 帮助中心</a>
+                <a href="#" class="text-gray-400 hover:text-primary transition"><i class="fa fa-shield"></i> 隐私政策</a>
+                <a href="#" class="text-gray-400 hover:text-primary transition"><i class="fa fa-file-text"></i> 服务条款</a>
+            </div>
+            <p>© 2025 Word文档智能抽取模块 - 让文档处理更高效</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM元素
+            const dropArea = document.getElementById('drop-area');
+            const fileInput = document.getElementById('file-input');
+            const browseBtn = document.getElementById('browse-btn');
+            const fileInfo = document.getElementById('file-info');
+            const fileName = document.getElementById('file-name');
+            const fileSize = document.getElementById('file-size');
+            const removeFile = document.getElementById('remove-file');
+            const uploadBtn = document.getElementById('upload-btn');
+            const resetBtn = document.getElementById('reset-btn');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercentage = document.getElementById('progress-percentage');
+            const resultContainer = document.getElementById('result-container');
+            const resultContent = document.getElementById('result-content');
+            const copyBtn = document.getElementById('copy-btn');
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+
+            // 存储当前文件
+            let currentFile = null;
+            // 接口超时时间（毫秒）
+            const API_TIMEOUT = 600000; // 默认设置为60秒
+
+            // 浏览文件按钮点击事件
+            browseBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            // 文件选择事件
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            // 拖放相关事件
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight() {
+                dropArea.classList.add('border-primary', 'bg-blue-50');
+            }
+
+            function unhighlight() {
+                dropArea.classList.remove('border-primary', 'bg-blue-50');
+            }
+
+            dropArea.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const file = dt.files[0];
+                if (file) {
+                    handleFile(file);
+                }
+            }
+
+            // 处理文件
+            function handleFile(file) {
+                // 检查文件类型
+                if (!file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
+                    showError('请上传Word文档 (.doc 或 .docx)');
+                    return;
+                }
+
+                // 检查文件大小
+                if (file.size > 20 * 1024 * 1024) { // 20MB
+                    showError('文件大小不能超过20MB');
+                    return;
+                }
+
+                currentFile = file;
+                showFileInfo(file);
+                uploadBtn.disabled = false;
+            }
+
+            // 显示文件信息
+            function showFileInfo(file) {
+                fileName.textContent = file.name;
+                fileSize.textContent = formatFileSize(file.size);
+                fileInfo.classList.remove('hidden');
+            }
+
+            // 格式化文件大小
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            // 移除文件
+            removeFile.addEventListener('click', () => {
+                currentFile = null;
+                fileInput.value = '';
+                fileInfo.classList.add('hidden');
+                uploadBtn.disabled = true;
+                resetResult();
+            });
+
+            // 重置按钮
+            resetBtn.addEventListener('click', () => {
+                currentFile = null;
+                fileInput.value = '';
+                fileInfo.classList.add('hidden');
+                uploadBtn.disabled = true;
+                resetResult();
+                hideError();
+            });
+
+            // 重置结果区域
+            function resetResult() {
+                progressContainer.classList.add('hidden');
+                resultContainer.classList.add('hidden');
+                progressBar.style.width = '0%';
+                progressPercentage.textContent = '0%';
+                resultContent.innerHTML = '';
+            }
+
+            // 上传文件
+            uploadBtn.addEventListener('click', () => {
+                if (!currentFile) return;
+
+                resetResult();
+                hideError();
+                showProgress();
+
+                const formData = new FormData();
+                formData.append('file', currentFile);
+
+                // 模拟进度更新
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += Math.random() * 15;
+                    if (progress > 90) {
+                        progress = 90;
+                        clearInterval(progressInterval);
+                    }
+                    updateProgress(progress);
+                }, 300);
+
+                // 创建一个AbortController用于超时控制
+                const controller = new AbortController();
+                const signal = controller.signal;
+
+                // 设置超时定时器
+                const timeoutId = setTimeout(() => {
+                    controller.abort(); // 超时后取消请求
+                }, API_TIMEOUT);
+
+                // 实际上传
+                fetch('http://localhost:8080/helloworld/summarize', {
+                    method: 'POST',
+                    body: formData,
+                    signal: signal // 将AbortController的信号传递给fetch请求
+                })
+                .then(response => {
+                    clearTimeout(timeoutId); // 清除超时定时器
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    clearInterval(progressInterval);
+                    updateProgress(100);
+                    return response.text();
+                })
+                .then(data => {
+                    showResult(data);
+                })
+                .catch(error => {
+                    clearTimeout(timeoutId); // 清除超时定时器
+                    clearInterval(progressInterval);
+                    console.error('上传失败:', error);
+                    if (error.name === 'AbortError') {
+                        showError(`请求超时（${API_TIMEOUT/1000}秒），请尝试上传较小的文件或稍后再试`);
+                    } else {
+                        showError('上传失败，请检查网络连接或稍后再试');
+                    }
+                });
+            });
+
+            // 显示进度
+            function showProgress() {
+                progressContainer.classList.remove('hidden');
+            }
+
+            // 更新进度
+            function updateProgress(percent) {
+                progressBar.style.width = `${percent}%`;
+                progressPercentage.textContent = `${Math.round(percent)}%`;
+            }
+
+            // 显示结果
+            function showResult(content) {
+                resultContent.innerHTML = content;
+                resultContainer.classList.remove('hidden');
+                
+                // 平滑滚动到结果区域
+                resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            // 复制结果
+            copyBtn.addEventListener('click', () => {
+                const textToCopy = resultContent.textContent;
+                navigator.clipboard.writeText(textToCopy)
+                    .then(() => {
+                        // 临时更改按钮文本和图标
+                        const originalText = copyBtn.innerHTML;
+                        copyBtn.innerHTML = '<i class="fa fa-check mr-2"></i> 已复制';
+                        copyBtn.classList.add('bg-green-600');
+                        
+                        // 2秒后恢复原状
+                        setTimeout(() => {
+                            copyBtn.innerHTML = originalText;
+                            copyBtn.classList.remove('bg-green-600');
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('复制失败:', err);
+                        showError('复制失败，请手动复制');
+                    });
+            });
+
+            // 显示错误
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorContainer.classList.remove('hidden');
+                
+                // 平滑滚动到错误区域
+                errorContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            // 隐藏错误
+            function hideError() {
+                errorContainer.classList.add('hidden');
+            }
+
+            // 初始禁用上传按钮
+            uploadBtn.disabled = true;
+        });
+    </script>
+</body>
+</html>

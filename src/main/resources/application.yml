@@ -7,6 +7,12 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 20MB
+  config:
+    import:
+      - "optional:nacos:prompt-config.json"
+  nacos:
+    username: nacos
+    password: nacos
   ai:
     chat:
       client:
@@ -17,3 +23,7 @@ spring:
         model: qwq:32b
     dashscope:
       api-key:
+    nacos:
+      prompt:
+        template:
+          enabled: true
